@@ -38,6 +38,7 @@ class RunArguments:
     q_max_length: Optional[int] = field(default=32)
 
 
+# use to evaluate the eval set
 def make_compute_metrics(tokenizer, valid_ids):
 
     def compute_metrics(eval_preds):
