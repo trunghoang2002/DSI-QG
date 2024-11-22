@@ -36,12 +36,14 @@ class DSITrainer(Trainer):
             #     early_stopping=True,)
 
             # Beam search
+            num_beam_search = 50 # for train faster
+            max_length = 128 # max sequence length
             batch_beams = model.generate(
                 inputs['input_ids'].to(self.args.device),
-                max_length=20,
-                num_beams=20,
+                max_length=max_length,
+                num_beams=num_beam_search,
                 prefix_allowed_tokens_fn=self.restrict_decode_vocab,
-                num_return_sequences=20,
+                num_return_sequences=num_beam_search,
                 early_stopping=True, )
 
             if batch_beams.shape[-1] < self.id_max_length:
@@ -53,9 +55,27 @@ class DSITrainer(Trainer):
 
         return (None, batch_beams, inputs['labels'])
 
+    # def _pad_tensors_to_max_len(self, tensor, max_length):
+    #     if self.tokenizer is not None and hasattr(self.tokenizer, "pad_token_id"):
+    #         # If PAD token is not defined at least EOS token has to be defined
+    #         pad_token_id = (
+    #             self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else self.tokenizer.eos_token_id
+    #         )
+    #     else:
+    #         if self.model.config.pad_token_id is not None:
+    #             pad_token_id = self.model.config.pad_token_id
+    #         else:
+    #             raise ValueError("Pad_token_id must be set in the configuration of the model, in order to pad tensors")
+    #     tensor[tensor == -100] = self.tokenizer.pad_token_id
+    #     padded_tensor = pad_token_id * torch.ones(
+    #         (tensor.shape[0], max_length), dtype=tensor.dtype, device=tensor.device
+    #     )
+    #     padded_tensor[:, : tensor.shape[-1]] = tensor
+    #     return padded_tensor
+    
     def _pad_tensors_to_max_len(self, tensor, max_length):
         if self.tokenizer is not None and hasattr(self.tokenizer, "pad_token_id"):
-            # If PAD token is not defined at least EOS token has to be defined
+            # If PAD token is not defined, use EOS token
             pad_token_id = (
                 self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else self.tokenizer.eos_token_id
             )
@@ -63,12 +83,31 @@ class DSITrainer(Trainer):
             if self.model.config.pad_token_id is not None:
                 pad_token_id = self.model.config.pad_token_id
             else:
-                raise ValueError("Pad_token_id must be set in the configuration of the model, in order to pad tensors")
-        tensor[tensor == -100] = self.tokenizer.pad_token_id
-        padded_tensor = pad_token_id * torch.ones(
-            (tensor.shape[0], max_length), dtype=tensor.dtype, device=tensor.device
-        )
-        padded_tensor[:, : tensor.shape[-1]] = tensor
+                raise ValueError("Pad_token_id must be set in the configuration of the model to pad tensors")
+
+        # Replace -100 with pad_token_id for compatibility
+        tensor[tensor == -100] = pad_token_id
+
+        # Check if tensor is 3D or higher
+        if len(tensor.shape) > 2:
+            # Create a new padded tensor for each slice along the batch dimension
+            padded_tensors = []
+            for i in range(tensor.shape[0]):
+                padded_tensor = pad_token_id * torch.ones(
+                    (tensor.shape[1], max_length), dtype=tensor.dtype, device=tensor.device
+                )
+                padded_tensor[:, :tensor.shape[-1]] = tensor[i]
+                padded_tensors.append(padded_tensor)
+
+            # Stack all padded tensors to form the final padded tensor
+            padded_tensor = torch.stack(padded_tensors, dim=0)
+        else:
+            # Handle 2D tensor case
+            padded_tensor = pad_token_id * torch.ones(
+                (tensor.shape[0], max_length), dtype=tensor.dtype, device=tensor.device
+            )
+            padded_tensor[:, :tensor.shape[-1]] = tensor
+
         return padded_tensor
 
 

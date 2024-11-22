@@ -41,25 +41,127 @@ class RunArguments:
 # use to evaluate the eval set
 def make_compute_metrics(tokenizer, valid_ids):
 
+    # def compute_metrics(eval_preds):
+    #     hit_at_1 = 0
+    #     hit_at_10 = 0
+    #     for beams, label in zip(eval_preds.predictions, eval_preds.label_ids):
+    #         # ex: label = np.array([1617, 4305, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    #         rank_list = tokenizer.batch_decode(beams,
+    #                                            skip_special_tokens=True)
+    #         # ex: rank_list = ['', '3', '6039', '6', '23', ' ', '10', '17', '14', '29', '7', '7', '07', '9', '26', '13', '1', '00', '146', '16']
+    #         label_id = tokenizer.decode(label, skip_special_tokens=True)
+    #         # ex: label_id = 6039
+    #         # filter out duplicates and invalid docids
+    #         filtered_rank_list = []
+    #         for docid in rank_list:
+    #             if docid not in filtered_rank_list and docid in valid_ids:
+    #                 filtered_rank_list.append(docid)
+    #         # ex: filtered_rank_list = ['6039', '3', '6', '23', '10', '6039', '14', '29', '7', '9', '26', '13', '1', '146', '16']
+
+    #         hits = np.where(np.array(filtered_rank_list)[:10] == label_id)[0]
+    #         # ex: = np.array([0, 5])
+    #         if len(hits) != 0:
+    #             hit_at_10 += 1
+    #             if hits[0] == 0:
+    #                 hit_at_1 += 1
+    #     return {"Hits@1": hit_at_1 / len(eval_preds.predictions), "Hits@10": hit_at_10 / len(eval_preds.predictions)}
+    # return compute_metrics
+
     def compute_metrics(eval_preds):
-        hit_at_1 = 0
-        hit_at_10 = 0
+        
+        rank_list_arr = []
+        label_ids_arr = []
+
         for beams, label in zip(eval_preds.predictions, eval_preds.label_ids):
             rank_list = tokenizer.batch_decode(beams,
                                                skip_special_tokens=True)
-            label_id = tokenizer.decode(label, skip_special_tokens=True)
-            # filter out duplicates and invalid docids
-            filtered_rank_list = []
-            for docid in rank_list:
-                if docid not in filtered_rank_list and docid in valid_ids:
-                    filtered_rank_list.append(docid)
+            if len(label.shape) == 2:
+                label_ids = []
+                for single_label in label:
+                    # Lọc bỏ các giá trị -100 (thường là giá trị pad)
+                    filtered_label = [token_id for token_id in single_label if token_id != -100]
+                    sub_label_id = tokenizer.decode(filtered_label, skip_special_tokens=True)
+                    if sub_label_id != "":
+                        label_ids.append(sub_label_id)
+            else:
+                label_ids = [tokenizer.decode(label, skip_special_tokens=True)]
+            
+            print("rank_list", rank_list)
+            print("label_ids", label_ids)
 
-            hits = np.where(np.array(filtered_rank_list)[:10] == label_id)[0]
-            if len(hits) != 0:
-                hit_at_10 += 1
-                if hits[0] == 0:
-                    hit_at_1 += 1
-        return {"Hits@1": hit_at_1 / len(eval_preds.predictions), "Hits@10": hit_at_10 / len(eval_preds.predictions)}
+        recall_ks = [3, 5, 10, 20, 50, 100, 200]
+        mrr_us = [10]
+        map_us = [10]
+        hits_ts = [1, 10]
+        ndcg_us = [10]
+
+        # Initialize metric results
+        recall_results = {f"Recall@{k}": 0 for k in recall_ks}
+        mrr_results = {f"MRR@{u}": 0 for u in mrr_us}
+        map_results = {f"MAP@{u}": 0 for u in map_us}
+        hits_results = {f"Hits@{t}": 0 for t in hits_ts}
+        ndcg_results = {f"NDCG@{u}": 0 for u in ndcg_us}
+
+        # Total number of queries
+        total_queries = len(rank_list_arr)
+
+        # Iterate through each rank list and corresponding label ids
+        for rank_list, label_ids in zip(rank_list_arr, label_ids_arr):
+            # Convert rank_list and label_ids to sets for quick lookup
+            label_ids_set = set(label_ids)
+
+            # Calculate Recall@k
+            for k in recall_ks:
+                relevant_in_top_k = len(label_ids_set.intersection(rank_list[:k]))
+                recall_results[f"Recall@{k}"] += relevant_in_top_k / min(k, len(label_ids))
+
+            # Calculate MRR@u
+            for u in mrr_us:
+                mrr = 0
+                for rank, doc_id in enumerate(rank_list[:u], start=1):
+                    if doc_id in label_ids_set:
+                        mrr = 1 / rank
+                        break
+                mrr_results[f"MRR@{u}"] += mrr
+
+            # Calculate MAP@u
+            for u in map_us:
+                relevant_docs = [1 if doc_id in label_ids_set else 0 for doc_id in rank_list[:u]]
+                if sum(relevant_docs) > 0:
+                    precision_at_ranks = [
+                        sum(relevant_docs[:i + 1]) / (i + 1) for i in range(len(relevant_docs)) if relevant_docs[i] == 1
+                    ]
+                    map_results[f"MAP@{u}"] += np.mean(precision_at_ranks)
+
+            # Calculate Hits@t
+            for t in hits_ts:
+                hits_results[f"Hits@{t}"] += int(any(doc_id in label_ids_set for doc_id in rank_list[:t]))
+
+            # Calculate NDCG@u
+            for u in ndcg_us:
+                # Calculate DCG
+                dcg = 0
+                for rank, doc_id in enumerate(rank_list[:u], start=1):
+                    if doc_id in label_ids_set:
+                        dcg += 1 / np.log2(rank + 1)
+
+                # Calculate IDCG
+                idcg = 0
+                for rank in range(1, min(u, len(label_ids_set)) + 1):
+                    idcg += 1 / np.log2(rank + 1)
+
+                # Calculate NDCG
+                ndcg_results[f"NDCG@{u}"] += dcg / idcg if idcg > 0 else 0
+
+        # Average metrics over total queries
+        recall_results = {k: v / total_queries for k, v in recall_results.items()}
+        mrr_results = {k: v / total_queries for k, v in mrr_results.items()}
+        map_results = {k: v / total_queries for k, v in map_results.items()}
+        hits_results = {k: v / total_queries for k, v in hits_results.items()}
+        ndcg_results = {k: v / total_queries for k, v in ndcg_results.items()}
+
+        # Combine all results
+        return {**recall_results, **mrr_results, **map_results, **hits_results, **ndcg_results}
     return compute_metrics
 
 
