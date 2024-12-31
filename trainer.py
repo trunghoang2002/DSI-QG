@@ -37,10 +37,9 @@ class DSITrainer(Trainer):
 
             # Beam search
             num_beam_search = 50 # for train faster
-            max_length = 128 # max sequence length
-            batch_beams = model.generate(
+            batch_beams = model.generate( # shape: batch_size x num_beam_search, a (a <= id_max_length)
                 inputs['input_ids'].to(self.args.device),
-                max_length=max_length,
+                max_length=self.id_max_length, # max output length
                 num_beams=num_beam_search,
                 prefix_allowed_tokens_fn=self.restrict_decode_vocab,
                 num_return_sequences=num_beam_search,
@@ -51,7 +50,7 @@ class DSITrainer(Trainer):
 
             inputs['labels'] = self._pad_tensors_to_max_len(inputs['labels'], self.id_max_length)
 
-            batch_beams = batch_beams.reshape(inputs['input_ids'].shape[0], 20, -1)
+            batch_beams = batch_beams.reshape(inputs['input_ids'].shape[0], self.id_max_length, -1) # shape: batch_size, id_max_length, num_beam_search
 
         return (None, batch_beams, inputs['labels'])
 

@@ -86,8 +86,10 @@ def make_compute_metrics(tokenizer, valid_ids):
             else:
                 label_ids = [tokenizer.decode(label, skip_special_tokens=True)]
             
-            print("rank_list", rank_list)
-            print("label_ids", label_ids)
+            # print("rank_list", rank_list)
+            # print("label_ids", label_ids)
+            rank_list_arr.append(rank_list)
+            label_ids_arr.append(label_ids)
 
         recall_ks = [3, 5, 10, 20, 50, 100, 200]
         mrr_us = [10]
