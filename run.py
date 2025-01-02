@@ -85,9 +85,9 @@ def make_compute_metrics(tokenizer, valid_ids):
                         label_ids.append(sub_label_id)
             else:
                 label_ids = [tokenizer.decode(label, skip_special_tokens=True)]
+            print("rank_list", rank_list)
+            print("label_ids", label_ids)
             
-            # print("rank_list", rank_list)
-            # print("label_ids", label_ids)
             rank_list_arr.append(rank_list)
             label_ids_arr.append(label_ids)
 
@@ -192,7 +192,13 @@ def main():
             model = T5ForConditionalGeneration.from_pretrained(run_args.model_path, cache_dir='cache')
         else:
             model = T5ForConditionalGeneration.from_pretrained(run_args.model_name, cache_dir='cache')
-
+            
+    # Chú trọng vào task docTquery ta có:
+    # - lấy max_length, train_dataset và valid_dataset từ tham số truyền vào và xử lý thành định dạng thích hợp để huấn luyện
+    # sử dụng tokenizer đã có (trùng với tokenizer của model T5) riêng đối với valid thì có thêm remove_prompt = false
+    # * remove_prompt chỉ là việc loại bỏ Question hoặc Passage phía trước của câu đầu vào thôi.
+    # - Truyền vào DocTqueryTrainer tất cả dữ liệu + thông số + model + data_collator.
+    # * data_collator là longest tức là không thực hiện thêm các padding vào sau.
     if run_args.task == "docTquery":
         train_dataset = IndexingTrainDataset(path_to_data=run_args.train_file,
                                              max_length=run_args.max_length,
@@ -283,12 +289,12 @@ def main():
                                           top_k=run_args.top_k,
                                           num_return_sequences=run_args.num_return_sequences,
                                           max_length=run_args.q_max_length)
-        with open(f"{run_args.valid_file}.q{run_args.num_return_sequences}.docTquery", 'w') as f:
+        with open(f"{run_args.valid_file}.q{run_args.num_return_sequences}.docTquery", 'w', encoding='utf-8') as f:
             for batch_tokens, batch_ids in tqdm(zip(predict_results.predictions, predict_results.label_ids),
                                                 desc="Writing file"):
                 for tokens, docid in zip(batch_tokens, batch_ids):
                     query = fast_tokenizer.decode(tokens, skip_special_tokens=True)
-                    jitem = json.dumps({'text_id': docid.item(), 'text': query})
+                    jitem = json.dumps({'text_id': docid.item(), 'text': query}, ensure_ascii=False)
                     f.write(jitem + '\n')
 
     else:
@@ -297,4 +303,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

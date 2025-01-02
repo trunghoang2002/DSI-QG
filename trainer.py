@@ -13,6 +13,7 @@ class DSITrainer(Trainer):
 
     def compute_loss(self, model, inputs, return_outputs=False):
         loss = model(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], labels=inputs['labels']).loss
+        print("loss: ", loss.item())
         if return_outputs:
             return loss, [None, None]  # fake outputs
         return loss
@@ -50,7 +51,7 @@ class DSITrainer(Trainer):
 
             inputs['labels'] = self._pad_tensors_to_max_len(inputs['labels'], self.id_max_length)
 
-            batch_beams = batch_beams.reshape(inputs['input_ids'].shape[0], self.id_max_length, -1) # shape: batch_size, id_max_length, num_beam_search
+            batch_beams = batch_beams.reshape(inputs['input_ids'].shape[0], num_beam_search, -1) # shape: batch_size, num_beam_search, id_max_length
 
         return (None, batch_beams, inputs['labels'])
 
@@ -116,7 +117,12 @@ class DocTqueryTrainer(Trainer):
         self.do_generation = do_generation
 
     def compute_loss(self, model, inputs, return_outputs=False):
+        # Trường hợp multi-label thì chỉ lấy label đầu tiên tính loss thôi
+        if inputs['labels'].dim() == 3:
+            inputs['labels'] = inputs['labels'][:, 0, :]
         loss = model(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], labels=inputs['labels']).loss
+        print("loss:", loss.item())
+        
         if return_outputs:
             return loss, [None, None]  # fake outputs
         return loss
