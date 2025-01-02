@@ -116,6 +116,9 @@ class DocTqueryTrainer(Trainer):
         self.do_generation = do_generation
 
     def compute_loss(self, model, inputs, return_outputs=False):
+        # Trường hợp multi-label thì chỉ lấy label đầu tiên tính loss thôi
+        if inputs['labels'].dim() == 3:
+            inputs['labels'] = inputs['labels'][:, 0, :]
         loss = model(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], labels=inputs['labels']).loss
         if return_outputs:
             return loss, [None, None]  # fake outputs

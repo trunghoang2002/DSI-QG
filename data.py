@@ -29,8 +29,7 @@ class IndexingTrainDataset(Dataset):
         self.valid_ids = set()
         for data in tqdm(self.train_data):
             if "list_text_id" in data:
-                for text_id in data["list_text_id"]:
-                    self.valid_ids.add(str(text_id))
+                self.valid_ids.update(tuple([str(text_id) for text_id in data['list_text_id']]))
             else:
                 self.valid_ids.add(str(data['text_id']))
 
@@ -77,7 +76,7 @@ class GenerateDataset(Dataset):
                     docid, passage, title = data.split('\t')
                     for lang in self.lang2mT5.values():
                         self.data.append((docid, f'Generate a {lang} question for this passage: {title} {passage}'))
-                elif 'msmarco' in path_to_data:
+                elif 'msmarco' in path_to_data or 'legal' in path_to_data:
                     docid, passage = data.split('\t')
                     self.data.append((docid, f'{passage}'))
                 else:
