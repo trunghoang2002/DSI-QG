@@ -113,13 +113,16 @@ class IndexingCollator(DataCollatorWithPadding):
         elif all(isinstance(d, list) for d in docids):
             # Case 2: Nested list
             labels_list  = [self.tokenizer(d, padding="longest", return_tensors="pt").input_ids for d in docids]
-            # labels = torch.stack(labels_list)
-            max_cols = max(tensor.size(1) for tensor in labels_list)
-            padded_labels_list = [
-                torch.nn.functional.pad(tensor, (0, max_cols - tensor.size(1)), value=-100)
-                for tensor in labels_list
-            ]
-            labels = torch.nn.utils.rnn.pad_sequence(padded_labels_list, batch_first=True, padding_value=-100)
+            # Only work for eval_batch_size = 1
+            labels = torch.stack(labels_list)
+
+            # Work with eval_batch_size >= 1, but for some reason, the performance is really bad
+            # max_cols = max(tensor.size(1) for tensor in labels_list)
+            # padded_labels_list = [
+            #     torch.nn.functional.pad(tensor, (0, max_cols - tensor.size(1)), value=-100)
+            #     for tensor in labels_list
+            # ]
+            # labels = torch.nn.utils.rnn.pad_sequence(padded_labels_list, batch_first=True, padding_value=-100)
         else:
             raise ValueError("Invalid format of docids. Must be a flat list or a nested list.")
         # print("labels", labels)

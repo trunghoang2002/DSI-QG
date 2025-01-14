@@ -118,6 +118,9 @@ class DocTqueryTrainer(Trainer):
 
     def compute_loss(self, model, inputs, return_outputs=False):
         # Trường hợp multi-label thì chỉ lấy label đầu tiên tính loss thôi
+        # print('input_ids:', inputs['input_ids'].shape)
+        # print('attention_mask:', inputs['attention_mask'].shape)
+        # print('labels:', inputs['labels'].shape)
         if inputs['labels'].dim() == 3:
             inputs['labels'] = inputs['labels'][:, 0, :]
         loss = model(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], labels=inputs['labels']).loss
